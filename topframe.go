@@ -19,17 +19,13 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/progrium/macdriver/cocoa"
-	"github.com/progrium/macdriver/core"
-	"github.com/progrium/macdriver/objc"
-	"github.com/progrium/macdriver/webkit"
 	"github.com/progrium/watcher"
 )
 
 var (
 	Version string
 
-	docsURL = "http://github.com/progrium/topframe"
+	docsURL = fmt.Sprintf("http://%s", getPackageName())
 )
 
 //go:embed data
@@ -46,7 +42,7 @@ func main() {
 		flagVersion      = flag.Bool("version", false, "show version")
 		flagVersionShort = flag.Bool("v", false, "show help")
 		flagDocs         = flag.Bool("docs", false, "open documentation in browser")
-		flagPlist        = flag.Bool("plist", false, "generate launch agent plist")
+		flagStartupFile  = flag.Bool(startupCommand, false, startupText)
 	)
 	flag.Parse()
 
@@ -65,15 +61,15 @@ func main() {
 
 	dir := ensureDir()
 
-	if *flagPlist {
-		generatePlist(dir)
+	if *flagStartupFile {
+		generateStartupFile(dir)
 		return
 	}
 
 	addr := startServer(dir)
 	fw := startWatcher(dir)
-
 	runApp(dir, addr, fw)
+	fmt.Println(docsURL)
 }
 
 func ensureDir() (dir string) {
@@ -99,8 +95,8 @@ func ensureDir() (dir string) {
 	return dir
 }
 
-func generatePlist(dir string) {
-	tmpl, err := template.New("plist").Parse(string(mustReadFile(data, "data/agent.plist")))
+func generateStartupFile(dir string) {
+	tmpl, err := template.New(startupCommand).Parse(string(mustReadFile(data, fmt.Sprintf("data/%s", startupFileName))))
 	fatal(err)
 
 	p, err := exec.LookPath(os.Args[0])
@@ -152,118 +148,6 @@ func startWatcher(dir string) *watcher.Watcher {
 	return fw
 }
 
-func runApp(dir string, addr *net.TCPAddr, fw *watcher.Watcher) {
-	cocoa.TerminateAfterWindowsClose = false
-
-	config := webkit.WKWebViewConfiguration_New()
-	config.Preferences().SetValueForKey(core.True, core.String("developerExtrasEnabled"))
-
-	url := core.URL(fmt.Sprintf("http://localhost:%d", addr.Port))
-	req := core.NSURLRequest_Init(url)
-
-	app := cocoa.NSApp_WithDidLaunch(func(_ objc.Object) {
-		wv := webkit.WKWebView_Init(cocoa.NSScreen_Main().Frame(), config)
-		wv.Retain()
-		wv.SetOpaque(false)
-		wv.SetBackgroundColor(cocoa.NSColor_Clear())
-		wv.SetValueForKey(core.False, core.String("drawsBackground"))
-		wv.LoadRequest(req)
-
-		win := cocoa.NSWindow_Init(cocoa.NSScreen_Main().Frame(),
-			cocoa.NSClosableWindowMask|cocoa.NSBorderlessWindowMask,
-			cocoa.NSBackingStoreBuffered, false)
-		win.SetContentView(wv)
-		win.SetBackgroundColor(cocoa.NSColor_Clear())
-		win.SetOpaque(false)
-		win.SetTitleVisibility(cocoa.NSWindowTitleHidden)
-		win.SetTitlebarAppearsTransparent(true)
-		win.SetIgnoresMouseEvents(true)
-		win.SetLevel(cocoa.NSMainMenuWindowLevel + 2)
-		win.MakeKeyAndOrderFront(win)
-		win.SetCollectionBehavior(cocoa.NSWindowCollectionBehaviorCanJoinAllSpaces)
-		win.Send("setHasShadow:", false)
-
-		statusBar := cocoa.NSStatusBar_System().StatusItemWithLength(cocoa.NSVariableStatusItemLength)
-		statusBar.Retain()
-		statusBar.Button().SetTitle("🔲")
-
-		menuInteract := cocoa.NSMenuItem_New()
-		menuInteract.Retain()
-		menuInteract.SetTitle("Interactive")
-		menuInteract.SetAction(objc.Sel("interact:"))
-		cocoa.DefaultDelegateClass.AddMethod("interact:", func(_ objc.Object) {
-			if win.IgnoresMouseEvents() {
-				win.SetLevel(cocoa.NSMainMenuWindowLevel - 1)
-				win.SetIgnoresMouseEvents(false)
-				menuInteract.SetState(1)
-			} else {
-				win.SetIgnoresMouseEvents(true)
-				win.SetLevel(cocoa.NSMainMenuWindowLevel + 2)
-				menuInteract.SetState(0)
-			}
-		})
-
-		menuEnabled := cocoa.NSMenuItem_New()
-		menuEnabled.Retain()
-		menuEnabled.SetTitle("Enabled")
-		menuEnabled.SetState(1)
-		menuEnabled.SetAction(objc.Sel("enabled:"))
-		cocoa.DefaultDelegateClass.AddMethod("enabled:", func(_ objc.Object) {
-			if win.IsVisible() {
-				win.Send("orderOut:", win)
-				menuInteract.SetEnabled(false)
-				menuEnabled.SetState(0)
-			} else {
-				win.Send("orderFront:", win)
-				menuInteract.SetEnabled(true)
-				menuEnabled.SetState(1)
-			}
-		})
-
-		menuSource := cocoa.NSMenuItem_New()
-		menuSource.SetTitle("Show Source...")
-		menuSource.SetAction(objc.Sel("source:"))
-		cocoa.DefaultDelegateClass.AddMethod("source:", func(_ objc.Object) {
-			go func() {
-				fatal(exec.Command("open", dir).Run())
-			}()
-		})
-
-		menuQuit := cocoa.NSMenuItem_New()
-		menuQuit.SetTitle("Quit")
-		menuQuit.SetAction(objc.Sel("terminate:"))
-
-		menu := cocoa.NSMenu_New()
-		menu.SetAutoenablesItems(false)
-		menu.AddItem(menuEnabled)
-		menu.AddItem(menuInteract)
-		menu.AddItem(cocoa.NSMenuItem_Separator())
-		menu.AddItem(menuSource)
-		menu.AddItem(cocoa.NSMenuItem_Separator())
-		menu.AddItem(menuQuit)
-
-		statusBar.SetMenu(menu)
-
-		go func() {
-			for {
-				select {
-				case event := <-fw.Event:
-					if event.IsDir() {
-						continue
-					}
-					wv.Reload(nil)
-				case <-fw.Closed:
-					return
-				}
-			}
-		}()
-	})
-
-	log.Printf("topframe %s from progrium.com\n", Version)
-	app.ActivateIgnoringOtherApps(true)
-	app.Run()
-}
-
 func streamExecScript(w http.ResponseWriter, dirpath string, args []string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok || !isExecScript(dirpath) {
@@ -313,9 +197,7 @@ func isExecScript(dirpath string) bool {
 
 func mustReadFile(fs embed.FS, name string) []byte {
 	b, err := fs.ReadFile(name)
-	if err != nil {
-		log.Fatal(err)
-	}
+	fatal(err)
 	return b
 }
 
@@ -330,8 +212,7 @@ func printHelp() {
 	})
 }
 
-func fatal(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
+func getPackageName() string {
+	output, _ := exec.Command("go", "list", "-m").CombinedOutput()
+	return strings.TrimSpace(string(output))
 }
