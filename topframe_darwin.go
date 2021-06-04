@@ -28,7 +28,7 @@ func RunApp(dir string, addr *net.TCPAddr, fw *watcher.Watcher) {
 	config := webkit.WKWebViewConfiguration_New()
 	config.Preferences().SetValueForKey(core.True, core.String("developerExtrasEnabled"))
 
-	url := core.URL(fmt.Sprintf("http://localhost:%d", addr.Port))
+	url := core.URL(fmt.Sprintf("http://%d:%d", addr.IP, addr.Port))
 	req := core.NSURLRequest_Init(url)
 
 	app := cocoa.NSApp_WithDidLaunch(func(_ objc.Object) {

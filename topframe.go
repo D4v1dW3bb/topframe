@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	Version string
+	Version = readVersion()
 
 	docsURL = fmt.Sprintf("http://%s", getPackageName())
 )
@@ -37,12 +37,12 @@ func init() {
 
 func main() {
 	var (
-		flagHelp         = flag.Bool("help", false, "show help")
-		flagHelpShort    = flag.Bool("h", false, "show help")
-		flagVersion      = flag.Bool("version", false, "show version")
-		flagVersionShort = flag.Bool("v", false, "show help")
-		flagDocs         = flag.Bool("docs", false, "open documentation in browser")
-		flagStartupFile  = flag.Bool(startupCommand, false, startupText)
+		flagHelp          = flag.Bool("help", false, "show help")
+		flagHelpShort     = flag.Bool("h", false, "show help")
+		flagVersion       = flag.Bool("version", false, "show version")
+		flagVersionShort  = flag.Bool("v", false, "show help")
+		flagDocs          = flag.Bool("docs", false, "open documentation in browser")
+		flagStartupScript = flag.Bool("startupscript", false, startupText)
 	)
 	flag.Parse()
 
@@ -55,13 +55,20 @@ func main() {
 		return
 	}
 	if *flagDocs {
-		fatal(exec.Command("open", docsURL).Run())
+		switch runtime.GOOS {
+		case "windows":
+			fatal(exec.Command("rundll32", "url.dll,FileProtocolHandler", docsURL).Start())
+		case "darwin":
+			fatal(exec.Command("open", docsURL).Start())
+		default:
+			fatal(fmt.Errorf("unsupported platform"))
+		}
 		return
 	}
 
 	dir := ensureDir()
 
-	if *flagStartupFile {
+	if *flagStartupScript {
 		generateStartupFile(dir)
 		return
 	}
@@ -95,6 +102,7 @@ func ensureDir() (dir string) {
 	return dir
 }
 
+// TODO: Check functionality on windows with .bat file
 func generateStartupFile(dir string) {
 	tmpl, err := template.New(startupCommand).Parse(string(mustReadFile(data, fmt.Sprintf("data/%s", startupFileName))))
 	fatal(err)
@@ -127,7 +135,7 @@ func startServer(dir string) *net.TCPAddr {
 		}),
 	}
 
-	addr := ":0"
+	addr := "localhost:0"
 	if os.Getenv("TOPFRAME_ADDR") != "" {
 		addr = os.Getenv("TOPFRAME_ADDR")
 	}
@@ -215,4 +223,20 @@ func printHelp() {
 func getPackageName() string {
 	output, _ := exec.Command("go", "list", "-m").CombinedOutput()
 	return strings.TrimSpace(string(output))
+}
+
+func readVersion() string {
+	file, err := os.Open("version")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if err = file.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	b, err := ioutil.ReadAll(file)
+
+	return string(b)
 }
