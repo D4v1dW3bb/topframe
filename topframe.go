@@ -32,6 +32,7 @@ var (
 var data embed.FS
 
 func init() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	runtime.LockOSThread()
 }
 
@@ -76,7 +77,9 @@ func main() {
 	addr := startServer(dir)
 	fw := startWatcher(dir)
 	runApp(dir, addr, fw)
-	fmt.Println(docsURL)
+	//runApp()
+	//runApp(fw)
+
 }
 
 func ensureDir() (dir string) {
@@ -152,7 +155,6 @@ func startWatcher(dir string) *watcher.Watcher {
 	fatal(fw.AddRecursive(dir))
 
 	go fw.Start(450 * time.Millisecond)
-
 	return fw
 }
 
