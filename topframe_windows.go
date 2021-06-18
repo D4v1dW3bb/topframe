@@ -28,9 +28,9 @@ func runApp(dir string, addr *net.TCPAddr, fw *watcher.Watcher) {
 	log.Print("Starting to create webview window")
 	declarative.MainWindow{
 		AssignTo: &mainWindow,
-		Title:    "WebCmd Webview",
-		MinSize:  declarative.Size{600, 400},
-		Size:     declarative.Size{960, 720},
+		Title:    "Topframe",
+		MinSize:  declarative.Size{Height: 600, Width: 400},
+		Size:     declarative.Size{Height: 960, Width: 720},
 		Visible:  true,
 		Layout:   declarative.VBox{},
 		Children: []declarative.Widget{
@@ -53,7 +53,7 @@ func runApp(dir string, addr *net.TCPAddr, fw *watcher.Watcher) {
 
 	log.Print("Create complete, initializing webView with URL ", serverURL)
 
-	win.SetWindowLong(mainWindow.Handle(), win.GWL_EXSTYLE, win.GetWindowLong(mainWindow.Handle(), win.GWL_EXSTYLE)|win.WS_EX_LAYERED|win.WS_EX_NOACTIVATE)
+	win.SetWindowLong(mainWindow.Handle(), win.GWL_EXSTYLE, win.GetWindowLong(mainWindow.Handle(), win.GWL_EXSTYLE)|win.WS_EX_LAYERED|win.WS_EX_NOACTIVATE|win.WS_EX_TRANSPARENT)
 	win.SetWindowPos(mainWindow.Handle(), win.HWND_TOPMOST, 0, 0, 0, 0, win.SWP_NOSIZE|win.SWP_NOMOVE|win.SWP_NOACTIVATE|win.SWP_SHOWWINDOW)
 	SetLayeredWindowAttributes(mainWindow.Handle(), win.RGB(255, 255, 255), 0, LWA_COLORKEY)
 
@@ -66,7 +66,7 @@ func runApp(dir string, addr *net.TCPAddr, fw *watcher.Watcher) {
 				if event.IsDir() {
 					continue
 				}
-				log.Print("Set URL: ", serverURL)
+				log.Print(mainWindow.Size())
 				webView.SetURL(serverURL)
 			case <-fw.Closed:
 				return

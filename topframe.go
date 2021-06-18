@@ -77,8 +77,6 @@ func main() {
 	addr := startServer(dir)
 	fw := startWatcher(dir)
 	runApp(dir, addr, fw)
-	//runApp()
-	//runApp(fw)
 
 }
 
